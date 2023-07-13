@@ -37,6 +37,7 @@ enum EA78_V4_MAPPER_SUPERGAME_4KOPT
 	EA78_V4_MAPPER_SUPERGAME_4KOPT_MASK = 7
 };
 
+static const u16 EA78_V4_AUDIO_STREAM =  1 << 5;
 static const u16 EA78_V4_AUDIO_COVOX =  1 << 4;
 static const u16 EA78_V4_AUDIO_YM2151 =  1 << 3;
 enum EA78_V4_AUDIO_POKEY
@@ -62,6 +63,7 @@ struct GDMapperInfo
 	u16		nMapperIRQEnable;
 	u32		nSize;
 	u32		nLoadAddr;
+	u8		nExtraFlags;
 };
 
 bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile);

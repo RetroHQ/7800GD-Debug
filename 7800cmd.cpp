@@ -102,10 +102,11 @@ struct SCmdExecute
 	u16		nMapperAudio;
 	u16		nMapperIRQEnable;
 	u32		nSize;
+	u16		nExtraFlags;
 };
 #pragma pack(pop)
 
-bool CmdExecute(const COMPORT h, const u8 nMapper, const u8 nMapperOptions, const u16 nMapperAudio, const u16 nMapperIRQEnable, const u32 nSize)
+bool CmdExecute(const COMPORT h, const u8 nMapper, const u8 nMapperOptions, const u16 nMapperAudio, const u16 nMapperIRQEnable, const u32 nSize, const u16 nExtraFlags)
 {
 	// send as little endian
 	SCmdExecute mapper =
@@ -114,8 +115,9 @@ bool CmdExecute(const COMPORT h, const u8 nMapper, const u8 nMapperOptions, cons
 		nMapperOptions,
 		nMapperAudio,
 		nMapperIRQEnable,
-		nSize
+		nSize,
+		nExtraFlags
 	};
 
-	return CmdSimple(h, ECmd_Execute, &mapper, 10);
+	return CmdSimple(h, ECmd_Execute, &mapper, sizeof(SCmdExecute));
 }

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "mapper.h"
+#include "7800cmd.h"
 
 // Version 3.1 header additions
 
@@ -35,6 +36,10 @@ static const u16 A78_TV_COMPOSITE = 1 << 1; // composite artifacts are intended
 
 static const u16 A78_SAVE_HSC = 1 << 0;
 static const u16 A78_SAVE_SAVEKEY = 1 << 1;
+static const u16 A78_VIDEO_HINT_COMPOSITE = 1 << 1;
+
+static const u8 A78_CONTROLLER_ATARIVOX_SAVEKEY = 10;
+static const u8 A78_CONTROLLER_MEGA7800 = 12;
 
 #pragma pack(push,1)
 struct A78Header
@@ -113,15 +118,16 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 	{
 		sHeader.nType &= ~(A78_TYPE_V3_POKEY_800|A78_TYPE_V3_EXRAM_M2|A78_TYPE_V3_BANKSET);
 		sHeader.nV3IRQEnable = 0;
-		sHeader.nV4Mapper = 0;
-		sHeader.nV4MapperAudio = 0;
-		sHeader.nV4MapperOptions = 0;
-		sHeader.nV4MapperIRQEnable = 0;
 	}
 
 	// if this is <V4 then create a valid V4 header
 	if (sHeader.nVersion < 4)
 	{
+		sHeader.nV4Mapper = 0;
+		sHeader.nV4MapperAudio = 0;
+		sHeader.nV4MapperOptions = 0;
+		sHeader.nV4MapperIRQEnable = 0;
+
 		// SuperGame bit set
 		if (sHeader.nType & A78_TYPE_SUPERGAME_BANKING)
 		{
@@ -206,7 +212,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 			}
 		}
 
-		// POKEY(s)
+		// DUAL POKEY@440/450
 		if ((sHeader.nType & (A78_TYPE_POKEY_440 | A78_TYPE_POKEY_450)) == (A78_TYPE_POKEY_440 | A78_TYPE_POKEY_450))
 		{
 			sHeader.nV4MapperAudio |= EA78_V4_AUDIO_POKEY_440_450;
@@ -221,6 +227,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 				sHeader.nV4MapperIRQEnable |= EA78_V4_IRQ_ENABLE_POKEY_2;
 			}
 		}
+		// POKEY@440
 		else if (sHeader.nType & A78_TYPE_POKEY_440)
 		{
 			sHeader.nV4MapperAudio |= EA78_V4_AUDIO_POKEY_440;
@@ -231,6 +238,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 				sHeader.nV4MapperIRQEnable |= EA78_V4_IRQ_ENABLE_POKEY_1;
 			}
 		}
+		// POKEY@450
 		else if (sHeader.nType & A78_TYPE_POKEY_450)
 		{
 			sHeader.nV4MapperAudio |= EA78_V4_AUDIO_POKEY_450;
@@ -241,6 +249,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 				sHeader.nV4MapperIRQEnable |= EA78_V4_IRQ_ENABLE_POKEY_1;
 			}
 		}
+		// POKEY@4000
 		else if (sHeader.nType & A78_TYPE_POKEY_4000)
 		{
 			sHeader.nV4MapperAudio |= EA78_V4_AUDIO_POKEY_4000;
@@ -251,6 +260,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 				sHeader.nV4MapperIRQEnable |= EA78_V4_IRQ_ENABLE_POKEY_1;
 			}
 		}
+		// POKEY@800
 		else if (sHeader.nType & A78_TYPE_V3_POKEY_800)
 		{
 			sHeader.nV4MapperAudio |= EA78_V4_AUDIO_POKEY_800;
@@ -280,6 +290,7 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 	pMapper->nMapperOptions = sHeader.nV4MapperOptions;
 	pMapper->nMapperAudio = sHeader.nV4MapperAudio;
 	pMapper->nMapperIRQEnable = sHeader.nV4MapperIRQEnable;
+	pMapper->nExtraFlags = 0;
 	
 	// Figure out load address required for the given mapper
 	u32 nAddr = 0;
@@ -309,14 +320,18 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 	{
 		// if EXRAM, then load from second bank up, first bank will be left
 		// uninitialised as RAM
-		switch (sHeader.nV4MapperOptions & EA78_V4_MAPPER_SUPERGAME_4KOPT_MASK)
+		// 1MB supergame uses one of the rom banks for ram, so just load from 0
+		if (sHeader.nSize <= (512*1024))
 		{
-			case EA78_V4_MAPPER_SUPERGAME_4KOPT_RAM:
-			case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_M2:
-			case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_X2:
-			case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_A8:
-				nAddr = 0x4000;
-				break;
+			switch (sHeader.nV4MapperOptions & EA78_V4_MAPPER_SUPERGAME_4KOPT_MASK)
+			{
+				case EA78_V4_MAPPER_SUPERGAME_4KOPT_RAM:
+				case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_M2:
+				case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_X2:
+				case EA78_V4_MAPPER_SUPERGAME_4KOPT_EXRAM_A8:
+					nAddr = 0x4000;
+					break;
+			}
 		}
 
 		// see if we have enough RAM for this, max 1MB
@@ -330,6 +345,30 @@ bool Get7800Mapper(GDMapperInfo *pMapper, FILE *pFile)
 		{
 			sHeader.nSize /= 2;
 		}
+	}
+
+	// check for HSC and enable support
+	if (sHeader.nSaveDevice & A78_SAVE_HSC)
+	{
+		pMapper->nExtraFlags |= EExtra_HSC;
+	}
+
+	// enable composite blending if required
+	if (sHeader.nVideoHint & A78_VIDEO_HINT_COMPOSITE)
+	{
+		pMapper->nExtraFlags |= EExtra_COMPOSITE;
+	}
+
+	// enable savekey in port 2 if required
+	if ((sHeader.nSaveDevice & A78_SAVE_SAVEKEY) || (sHeader.nController2 == A78_CONTROLLER_ATARIVOX_SAVEKEY))
+	{
+		pMapper->nExtraFlags |= EExtra_SAVEKEY;
+	}
+
+	// enable native mega7800 support if required
+	if (sHeader.nController1 == A78_CONTROLLER_MEGA7800 || sHeader.nController2 == A78_CONTROLLER_MEGA7800)
+	{
+		pMapper->nExtraFlags |= EExtra_MEGA7800;
 	}
 
 	// Load address and size

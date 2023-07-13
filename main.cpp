@@ -154,7 +154,8 @@ int main(int argc, const char **argv)
 							mapper.nMapperOptions,
 							mapper.nMapperAudio,
 							mapper.nMapperIRQEnable,
-							mapper.nSize))
+							mapper.nSize,
+							mapper.nExtraFlags))
 			{
 				printf("Executing...\n");
 			}
